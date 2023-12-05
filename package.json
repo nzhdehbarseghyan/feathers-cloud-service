@@ -1,0 +1,68 @@
+{
+  "name": "fetahers-cloud-service",
+  "description": "",
+  "version": "0.0.0",
+  "homepage": "",
+  "private": true,
+  "keywords": [
+    "feathers"
+  ],
+  "author": {},
+  "contributors": [],
+  "bugs": {},
+  "engines": {
+    "node": ">= 16.20.0"
+  },
+  "feathers": {
+    "language": "js",
+    "packager": "npm",
+    "database": "mongodb",
+    "framework": "express",
+    "transports": [
+      "rest",
+      "websockets"
+    ],
+    "schema": "json"
+  },
+  "directories": {
+    "lib": "src",
+    "test": "test"
+  },
+  "main": "lib/index",
+  "type": "module",
+  "scripts": {
+    "start": "node src",
+    "dev": "nodemon src/",
+    "prettier": "npx prettier \"**/*.js\" --write",
+    "mocha": "cross-env NODE_ENV=test mocha test/ --recursive --exit",
+    "test": "npm run mocha",
+    "bundle:client": "npm pack --pack-destination ./public"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.465.0",
+    "@aws-sdk/lib-storage": "^3.465.0",
+    "@feathersjs/adapter-commons": "^5.0.12",
+    "@feathersjs/authentication": "^5.0.12",
+    "@feathersjs/authentication-client": "^5.0.12",
+    "@feathersjs/configuration": "^5.0.12",
+    "@feathersjs/errors": "^5.0.12",
+    "@feathersjs/express": "^5.0.12",
+    "@feathersjs/feathers": "^5.0.12",
+    "@feathersjs/mongodb": "^5.0.12",
+    "@feathersjs/schema": "^5.0.12",
+    "@feathersjs/socketio": "^5.0.12",
+    "@feathersjs/transport-commons": "^5.0.12",
+    "compression": "^1.7.4",
+    "mongodb": "^6.3.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@feathersjs/cli": "^5.0.12",
+    "@feathersjs/rest-client": "^5.0.12",
+    "axios": "^1.6.2",
+    "cross-env": "^7.0.3",
+    "mocha": "^10.2.0",
+    "nodemon": "^3.0.2",
+    "prettier": "^3.1.0"
+  }
+}
