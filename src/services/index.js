@@ -1,3 +1,7 @@
+const cloudService = require('./cloud-service/cloud-builder.service.js')
+const mediaStoreService = require('./media-store/media-store.service.js')
+
 export const services = (app) => {
-  // All services will be registered here
+    app.configure(cloudService)
+    app.configure(mediaStoreService)
 }

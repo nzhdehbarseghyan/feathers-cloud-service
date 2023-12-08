@@ -1,7 +1,6 @@
-const { S3 } = require('@aws-sdk/client-s3');
-const { Upload } = require('@aws-sdk/lib-storage');
-const logger = require('../logger');
-let s3 = new S3();
+const { S3 } = require('@aws-sdk/client-s3')
+const { Upload } = require('@aws-sdk/lib-storage')
+const logger = require('../logger')
 
 /**
  * Creates and returns an S3 client with the specified credentials and region.
@@ -25,12 +24,10 @@ function createS3Client (accessKeyId, secretAccessKey, region) {// TODO: This wi
     region = 'us-east-1'
   }
 
-  s3 = new S3({
+  return new S3({
     region,
     credentials,
   })
-
-  return s3
 }
 
 /**
@@ -44,39 +41,27 @@ function createS3Client (accessKeyId, secretAccessKey, region) {// TODO: This wi
 const createS3Bucket = async (s3Data, region, name) => {
   try {
     const { accessKey, secretKey } = s3Data
-    s3 = createS3Client(accessKey, secretKey, region)
+    const s3 = createS3Client(accessKey, secretKey, region)
 
     return await s3.createBucket({
       Bucket: name,
     })
-
-    // const bucketPolicy = { // TODO: This should be uncommented to change bucket permission (if needed)
-    //   'Version': '2012-10-17',
-    //   'Statement': [
-    //     {
-    //       'Effect': 'Allow',
-    //       'Principal': '*',
-    //       'Action': 's3:GetObject',
-    //       'Resource': `arn:aws:s3:::${name}/*`
-    //     }
-    //   ]
-    // }
-    //
-    // const putBucketPolicyParams = {
-    //   Bucket: name,
-    //   Policy: JSON.stringify(bucketPolicy),
-    // }
-    // await s3.send(new PutBucketPolicyCommand(putBucketPolicyParams))
   } catch (e) {
     logger.error('[AWS createS3Bucket] Error occurred ', e)
     throw e
   }
 }
 
+/**
+ * Retrieves a list of buckets from an S3 client.
+ * @param {object} s3Data - The S3 credentials and configuration.
+ * @returns {Promise<ListBucketsCommandOutput>} - The list of buckets.
+ * @throws {Error} - If there is an error retrieving the list of buckets.
+ */
 const getBucketList = async (s3Data) => {
   try {
     const { accessKey, secretKey } = s3Data
-    s3 = createS3Client(accessKey, secretKey, process.env.S3_REGION)
+    const s3 = createS3Client(accessKey, secretKey, process.env.S3_REGION)
 
     return await s3.listBuckets({})
   } catch (e) {
@@ -101,7 +86,7 @@ const getBucketList = async (s3Data) => {
  */
 const s3Upload = async (userId, fileDetail, bucket, credentials) => {
   try {
-    s3 = createS3Client(credentials.awsS3.accessKey, credentials.awsS3.secretKey, credentials.region)
+    const s3 = createS3Client(credentials.awsS3.accessKey, credentials.awsS3.secretKey, credentials.region)
     const uploadedFile = await new Upload({
       client: s3,
       params: {
@@ -123,11 +108,16 @@ const s3Upload = async (userId, fileDetail, bucket, credentials) => {
  *
  * @param {string} key - The key of the file.
  * @param {string} bucket - The name of the S3 bucket.
- * @returns {Object} - An object containing the file data and content type.
+ * @param {Object} credentials - The AWS credentials.
+ * @param {string} credentials.accessKey - The access key for the AWS account.
+ * @param {string} credentials.secretKey - The secret key for the AWS account.
+ * @param {string} credentials.region - The AWS region.
+ * @returns {Promise<Object>} - A Promise that resolves to an object containing the file data and content type.
  * @throws {Error} - If there is an error retrieving the file.
  */
-const getS3File = async (key, bucket) => {
+const getS3File = async (key, bucket, credentials) => {
   try {
+    const s3 = createS3Client(credentials.accessKey, credentials.secretKey, credentials.region)
     const getObjectParams = {
       Bucket: bucket,
       Key: key,
@@ -136,7 +126,7 @@ const getS3File = async (key, bucket) => {
     const fileData = await s3.getObject(getObjectParams)
     const buf = await fileData.Body.transformToString()
 
-    return { body: buf, contentType: fileData.ContentType }
+    return { body: buf }
   } catch (e) {
     logger.error('[Get S3 File] error occurred', e)
     throw e // Rethrow the error so that the caller can handle it
@@ -145,14 +135,17 @@ const getS3File = async (key, bucket) => {
 
 /**
  * Update an S3 file with the provided body content.
+ *
  * @param {string} userId - The ID of the user.
  * @param {string|Buffer|Uint8Array|Blob} body - The content of the file to be updated.
  * @param {object} fileDetail - The details of the file to be updated.
+ * @param {object} credentials - The AWS credentials object.
  * @returns {object} - The location of the updated file.
  * @throws {Error} - If there is an error updating the file.
  */
-const updateS3File = async (userId, body, fileDetail) => {
+const updateS3File = async (userId, body, fileDetail, credentials) => {
   try {
+    const s3 = createS3Client(credentials.accessKey, credentials.secretKey, fileDetail.region)
     const putObjectParams = {
       Bucket: fileDetail.bucket,
       Key: fileDetail.key,
@@ -161,7 +154,7 @@ const updateS3File = async (userId, body, fileDetail) => {
 
     await s3.putObject(putObjectParams)
 
-    return { location: `https://${process.env.AWS_BUCKET_NAME}.s3.amazonaws.com/${putObjectParams.Key}` }
+    return { location: '' }
   } catch (e) {
     logger.error(e)
     throw e // Rethrow the error so that the caller can handle it

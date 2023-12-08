@@ -1,12 +1,12 @@
-const logger = require('../../logger');
-const { CLOUD_SITES, AWS_ERROR_CODES } = require('../../constants');
+const logger = require('../../logger')
+const { CLOUD_SITES, AWS_ERROR_CODES } = require('../../constants')
 const {
   s3Upload,
   getS3File,
   updateS3File,
   createS3Bucket,
   getBucketList,
-} = require('../../libs/aws');
+} = require('../../libs/aws')
 
 exports.CloudBuilder = class CloudBuilder {
   constructor (options, app) {
@@ -23,36 +23,34 @@ exports.CloudBuilder = class CloudBuilder {
    */
   async create (data, params) {
     try {
-      const settingsService = this.app.service('settings');
-      const userId = params.user?._id;
-      const settings = await settingsService.find({ query: { userId } });
-      const { awsS3 } = settings.data[0];
-      const selectedAWSS3 = awsS3.find(s3 => s3.label === data.awsAccount);
-      let uploadedData;
+      const userId = params.user?._id
+      let selectedAWSS3 = await this.getAWSFromSettings(userId)
+      selectedAWSS3 = selectedAWSS3.find(s3 => s3.label === data.awsAccount)
+      let uploadedData
 
       if (data.cloud === CLOUD_SITES.S3) {
         if (!selectedAWSS3?.secretKey || !selectedAWSS3?.accessKey) {
           return { status: 'error', data: 'AWS credentials are missing.' }
         }
 
-        uploadedData = await this.addObjectS3(data, selectedAWSS3, userId);
+        uploadedData = await this.addObjectS3(data, selectedAWSS3, userId)
       }
 
       return { status: 'success', data: uploadedData }
     } catch (e) {
-      logger.error('[Creating Object in S3]', e.Code);
+      logger.error('[Creating Object in S3]', e.Code)
 
       switch (e.Code) {
         case AWS_ERROR_CODES.NO_SUCH_BUCKET:
-          return { status: 'error', data: 'The specified bucket does not exist.' };
+          return { status: 'error', data: 'The specified bucket does not exist.' }
         case AWS_ERROR_CODES.INVALID_BUCKET_NAME:
-          return { status: 'error', data: 'The specified bucket is not valid.' };
+          return { status: 'error', data: 'The specified bucket is not valid.' }
         case AWS_ERROR_CODES.BUCKET_ALREADY_EXISTS:
-          return { status: 'error', data: 'The specified bucket already exists.' };
+          return { status: 'error', data: 'The specified bucket already exists.' }
         case AWS_ERROR_CODES.BUCKET_ALREADY_OWNED_BY_YOU:
-          return { status: 'error', data: 'The specified bucket already owned by you.' };
+          return { status: 'error', data: 'The specified bucket already owned by you.' }
         default:
-          return { status: 'error', data: 'Something went wrong. Please try again!' };
+          return { status: 'error', data: 'Something went wrong. Please try again!' }
       }
     }
   }
@@ -66,20 +64,20 @@ exports.CloudBuilder = class CloudBuilder {
   async find (params) {
     try {
       if ('bucketList' in params.query) {
-        const settingsService = this.app.service('settings');
-        const userId = params.user?._id;
-        const settings = await settingsService.find({ query: { userId } });
-        const { awsS3 } = settings.data[0]// TODO this should be changed
-        const list = await getBucketList(awsS3);
+        const userId = params.user?._id
+        const { awsAccount } = params.query
+        let selectedAWSS3 = await this.getAWSFromSettings(userId, awsAccount)
+        selectedAWSS3 = selectedAWSS3.find(s3 => s3.label === awsAccount)
+        const list = await getBucketList(selectedAWSS3)
 
-        return { status: 'success', data: list?.Buckets };
+        return { status: 'success', data: list?.Buckets }
       }
 
       const query = {
         ...params.query,
         type: 'html',
       }
-      const data = await this.getMedia(query);
+      const data = await this.getMedia(query)
 
       return { status: 'success', data }
     } catch (e) {
@@ -90,15 +88,19 @@ exports.CloudBuilder = class CloudBuilder {
   }
 
   /**
-  * Retrieves media data by ID
-  * @param {string} id - The ID of the media
-  * @param {object} params - Additional parameters
-  * @returns {object} - The result of the operation
-  */
+   * Retrieves media data by ID
+   * @param {string} id - The ID of the media
+   * @param {object} params - Additional parameters
+   * @returns {object} - The result of the operation
+   */
   async get (id, params) {
     try {
-      const file = await this.getMediaById(id);
-      const data = await getS3File(file.key, file.bucket);
+      const file = await this.getMediaById(id)
+      let selectedAWSAccount = await this.getAWSFromSettings(file.userId)
+      selectedAWSAccount = selectedAWSAccount.find(acc => acc.accessKey === file.cloudSiteId)
+      selectedAWSAccount.region = file.region
+
+      const data = await getS3File(file.key, file.bucket, selectedAWSAccount)
 
       return { status: 'success', data }
     } catch (e) {
@@ -119,10 +121,13 @@ exports.CloudBuilder = class CloudBuilder {
    */
   async update (id, data, params) {
     try {
-      const { _id, html, name } = data;
-      const file = await this.getMediaById(_id);
-      const updatedData = await updateS3File(params.user._id, html, file);
-      const mediaFile = await this.updateMediaById(_id, { name });
+      const { _id, html, name } = data
+      const file = await this.getMediaById(_id)
+      let selectedAWSAccount = await this.getAWSFromSettings(file.userId)
+      selectedAWSAccount = selectedAWSAccount.find(acc => acc.accessKey === file.cloudSiteId)
+
+      const updatedData = await updateS3File(params.user._id, html, file, selectedAWSAccount)
+      const mediaFile = await this.updateMediaById(_id, { name })
 
       return { status: 'success', data: { location: updatedData.location, name: mediaFile.name } }
     } catch (e) {
@@ -134,24 +139,24 @@ exports.CloudBuilder = class CloudBuilder {
 
   async addObjectS3 (data, awsS3, userId) {
     if (data.bucket && data.newBucket) {
-      await createS3Bucket(awsS3, data.region, data.bucket);
+      await createS3Bucket(awsS3, data.region, data.bucket)
     }
 
     let region = data.region
 
     if (!region) {
-      const mediaObj = await this.getMedia({ userId, bucket: data.bucket });
-      region = mediaObj.data[0]?.region;
+      const mediaObj = await this.getMedia({ userId, bucket: data.bucket })
+      region = mediaObj.data[0]?.region
     }
 
-    const uploadedData = await s3Upload(userId, data, data.bucket, { region, awsS3 });
-    const savedData = await this.saveToDatabase(uploadedData, data, userId, region);
+    const uploadedData = await s3Upload(userId, data, data.bucket, { region, awsS3 })
+    const savedData = await this.saveToDatabase(uploadedData, data, userId, region, awsS3.accessKey)
 
     return { location: uploadedData.location, _id: savedData._id, name: savedData.name }
   }
 
-  async saveToDatabase (uploadedData, fileDetail, userId, region) {
-    const mediaStoreService = this.app.service('media-store');
+  async saveToDatabase (uploadedData, fileDetail, userId, region, cloudSiteId) {
+    const mediaStoreService = this.app.service('media-store')
 
     return await mediaStoreService.create({
       userId,
@@ -160,26 +165,35 @@ exports.CloudBuilder = class CloudBuilder {
       key: uploadedData.key,
       bucket: uploadedData.bucket,
       region,
+      cloudSiteId,
       type: 'html',
       cloud: fileDetail.cloud
-    });
+    })
   }
 
   async getMediaById (id) {
-    const mediaStoreService = this.app.service('media-store');
+    const mediaStoreService = this.app.service('media-store')
 
-    return await mediaStoreService.get(id);
+    return await mediaStoreService.get(id)
   }
 
   async getMedia (query) {
-    const mediaStoreService = this.app.service('media-store');
+    const mediaStoreService = this.app.service('media-store')
 
-    return await mediaStoreService.find({ query });
+    return await mediaStoreService.find({ query })
   }
 
   async updateMediaById (id, data) {
-    const mediaStoreService = this.app.service('media-store');
+    const mediaStoreService = this.app.service('media-store')
 
-    return await mediaStoreService.patch(id, data);
+    return await mediaStoreService.patch(id, data)
+  }
+
+  async getAWSFromSettings (userId) {
+    const settingsService = this.app.service('settings')
+    const settings = await settingsService.find({ query: { userId } })
+    const { awsS3 } = settings.data[0]
+
+    return awsS3
   }
 }
